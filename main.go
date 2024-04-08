@@ -12,9 +12,9 @@ import (
 
 const (
 	username = "root"
-	password = "password"
+	password = "admin"
 	hostname = "127.0.0.1:3306"
-	dbname   = "ecommerce"
+	dbname   = "dcard"
 )
 
 func dsn(dbName string) string {
