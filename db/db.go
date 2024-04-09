@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +21,7 @@ const (
 )
 
 func dsn(dbName string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s)/%s", username, password, hostname, dbName)
+	return fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", username, password, hostname, dbName)
 }
 
 func DbConnect() {
@@ -150,48 +151,72 @@ func InsertAdvertisement(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Inserted advertisement successfully"})
 }
 
+type SelectedItem struct {
+	Title string    `json:"title"`
+	EndAt time.Time `json:"endAt"`
+}
+
 func SelectActiveAdvertisements(c *gin.Context) {
 	db, err := sql.Open("mysql", dsn(dbname))
 	if err != nil {
 		log.Printf("Error %s when opening DB", err)
+		c.JSON(500, gin.H{"error": "Error opening DB"})
 		return
 	}
 	defer db.Close()
 
-	offset := c.DefaultQuery("offset", "0")
-	limit := c.DefaultQuery("limit", "5")
-	age_lb := c.DefaultQuery("age", "100")
-	age_ub := c.DefaultQuery("age", "1")
-	gender := c.DefaultQuery("gender", "")
-	country := c.DefaultQuery("country", "")
-	platform := c.DefaultQuery("platform", "")
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid offset"})
+		return
+	}
+
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "5"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid limit"})
+		return
+	}
+	age_ub := c.DefaultQuery("age", "100")
+	age_lb := c.DefaultQuery("age", "1")
+	gender := c.DefaultQuery("gender", "%")
+	country := c.DefaultQuery("country", "%")
+	platform := c.DefaultQuery("platform", "%")
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
-	rows, err := db.QueryContext(ctx,
-		`SELECT * FROM advertisements
-		WHERE (age_start <= ? AND age_end >= ?)
-		AND (gender LIKE ? OR gender IS NULL)
-		AND (country LIKE ? OR country IS NULL)
-		AND (platform LIKE ? OR platform IS NULL)
-		ORDER BY end_at ASC
-		LIMIT ? OFFSET ?`,
-		age_lb, age_ub, gender, country, platform, limit, offset)
+	query := `SELECT title, end_at FROM advertisements
+        WHERE (age_start <= ? AND age_end >= ?)
+        AND (gender LIKE ? OR gender IS NULL)
+        AND (country LIKE ? OR country IS NULL)
+        AND (platform LIKE ? OR platform IS NULL)
+        ORDER BY end_at ASC
+        LIMIT ? OFFSET ?`
+
+	rows, err := db.QueryContext(ctx, query,
+		age_ub, age_lb, gender, country, platform, limit, offset)
 	if err != nil {
 		log.Printf("Error %s when querying active advertisements", err)
+		c.JSON(500, gin.H{"error": "Error querying active advertisements"})
 		return
 	}
 	defer rows.Close()
 
-	ads := make([]Advertisement, 0)
+	var items []SelectedItem
 	for rows.Next() {
-		var ad Advertisement
-		if err := rows.Scan(&ad.Title, &ad.EndAt); err != nil {
+		var item SelectedItem
+		if err := rows.Scan(&item.Title, &item.EndAt); err != nil {
 			log.Printf("Error %s when scanning rows", err)
+			c.JSON(500, gin.H{"error": "Error scanning rows"})
 			return
 		}
-		ads = append(ads, ad)
+		items = append(items, item)
 	}
-	c.JSON(200, ads)
+	if err := rows.Err(); err != nil {
+		log.Printf("Error %s when iterating over rows", err)
+		c.JSON(500, gin.H{"error": "Error iterating over rows"})
+		return
+	}
+
+	c.JSON(200, gin.H{"items": items})
 }

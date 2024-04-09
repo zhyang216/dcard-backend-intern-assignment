@@ -5,7 +5,9 @@
 * Make sure you have installed *MySQL*
 
 ## Usage
-1. 
+1. Enter `docker-compose up -d` in the terminal, using docker compose to launch MySQL server
+2. Enter `go run .` to launch the system
+3. Open another terminal
 
 ## Reference
 * [教學課程：使用 MySQL 和 Docker Compose 建立多容器應用程式](<https://learn.microsoft.com/zh-tw/visualstudio/docker/tutorials/tutorial-multi-container-app-mysql>)
