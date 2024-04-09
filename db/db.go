@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/biter777/countries"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -84,13 +83,12 @@ func CreateTable() {
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
-	// Extract all countries from the countries package
-	countriesString := "["
-	for _, country := range countries.All() {
-		countriesString += fmt.Sprintf("\"%s\",", country.Alpha2())
+	// Delete the table first if any
+	_, err = db.ExecContext(ctx, "DROP TABLE IF EXISTS advertisements")
+	if err != nil {
+		log.Printf("Error %s when dropping advertisements table", err)
+		return
 	}
-	countriesString = strings.TrimSuffix(countriesString, ",")
-	countriesString += "]"
 
 	// Create the advertisements table
 	_, err = db.ExecContext(ctx,
@@ -99,11 +97,11 @@ func CreateTable() {
 			title VARCHAR(255) NOT NULL,
 			start_at DATETIME NOT NULL,
 			end_at DATETIME NOT NULL,
-			age_from INT NOT NULL DEFAULT 1,
-			age_to INT NOT NULL DEFAULT 100,
-			gender VARCHAR(15) NOT NULL DEFAULT '["M", "F"]',
-			countries VARCHAR(1500) NOT NULL DEFAULT + `+countriesString+`,
-			platforms VARCHAR(255) NOT NULL DEFAULT '["iOS", "Android", "Web"]',
+			age_start INT NOT NULL DEFAULT 1,
+			age_end INT NOT NULL DEFAULT 100,
+			gender VARCHAR(15),
+			countries VARCHAR(1500),
+			platforms VARCHAR(255)
 		)`)
 	if err != nil {
 		log.Printf("Error %s when creating advertisements table", err)
@@ -113,17 +111,15 @@ func CreateTable() {
 }
 
 type Advertisement struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	StartAt   string `json:"startAt"`
-	EndAt     string `json:"endAt"`
-	Condition struct {
-		AgeStart int    `json:"ageStart"`
-		AgeEnd   int    `json:"ageEnd"`
-		Gender   string `json:"gender"`
-		Country  string `json:"country"`
-		Platform string `json:"platform"`
-	} `json:"condition"`
+	ID       int       `json:"id"`
+	Title    string    `json:"title"`
+	StartAt  time.Time `json:"startAt"`
+	EndAt    time.Time `json:"endAt"`
+	AgeStart int       `json:"ageStart"`
+	AgeEnd   int       `json:"ageEnd"`
+	Gender   []string  `json:"gender"`
+	Country  []string  `json:"country"`
+	Platform []string  `json:"platform"`
 }
 
 func InsertAdvertisement(c *gin.Context) {
@@ -139,26 +135,18 @@ func InsertAdvertisement(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	print(ad.Title)
-	print(ad.StartAt)
-	print(ad.EndAt)
-	print(ad.Condition.AgeStart)
-	print(ad.Condition.AgeEnd)
-	print(ad.Condition.Gender)
-	print(ad.Condition.Country)
-	print(ad.Condition.Platform)
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
 	_, err = db.ExecContext(ctx,
-		`INSERT INTO advertisements (title, start_at, end_at, age_from, age_to, gender, countries, platforms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		ad.Title, ad.StartAt, ad.EndAt, ad.Condition.AgeStart, ad.Condition.AgeEnd, ad.Condition.Gender, ad.Condition.Country, ad.Condition.Platform)
+		"INSERT INTO advertisements (title, start_at, end_at, age_start, age_end, gender, countries, platforms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		ad.Title, ad.StartAt, ad.EndAt, ad.AgeStart, ad.AgeEnd, strings.Join(ad.Gender, ","), strings.Join(ad.Country, ","), strings.Join(ad.Platform, ","))
 	if err != nil {
-		log.Printf("Failed to insert advertisement: %s", err)
+		log.Printf("Error %s when inserting row into products table", err)
 		return
 	}
-	log.Printf("Inserted advertisement successfully\n")
+	log.Printf("Inserted advertisement %s successfully\n", ad.Title)
 	c.JSON(200, gin.H{"message": "Inserted advertisement successfully"})
 }
 
