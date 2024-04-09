@@ -100,8 +100,8 @@ func CreateTable() {
 			age_start INT NOT NULL DEFAULT 1,
 			age_end INT NOT NULL DEFAULT 100,
 			gender VARCHAR(15),
-			countries VARCHAR(1500),
-			platforms VARCHAR(255)
+			country VARCHAR(1500),
+			platform VARCHAR(255)
 		)`)
 	if err != nil {
 		log.Printf("Error %s when creating advertisements table", err)
@@ -140,7 +140,7 @@ func InsertAdvertisement(c *gin.Context) {
 	defer cancelfunc()
 
 	_, err = db.ExecContext(ctx,
-		"INSERT INTO advertisements (title, start_at, end_at, age_start, age_end, gender, countries, platforms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO advertisements (title, start_at, end_at, age_start, age_end, gender, country, platform) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		ad.Title, ad.StartAt, ad.EndAt, ad.AgeStart, ad.AgeEnd, strings.Join(ad.Gender, ","), strings.Join(ad.Country, ","), strings.Join(ad.Platform, ","))
 	if err != nil {
 		log.Printf("Error %s when inserting row into products table", err)
@@ -150,29 +150,48 @@ func InsertAdvertisement(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "Inserted advertisement successfully"})
 }
 
-// func select_active_advertisements(c *gin.Context) {
-// 	db, err := sql.Open("mysql", dsn(dbname))
-// 	if err != nil {
-// 		log.Printf("Error %s when opening DB", err)
-// 		return
-// 	}
-// 	defer db.Close()
+func SelectActiveAdvertisements(c *gin.Context) {
+	db, err := sql.Open("mysql", dsn(dbname))
+	if err != nil {
+		log.Printf("Error %s when opening DB", err)
+		return
+	}
+	defer db.Close()
 
-// 	offset := c.Query("offset")
-// 	limit := c.DefaultQuery("limit", "5")
-// 	age := c.Query("age")
-// 	gender := c.Query("gender")
-// 	country := c.Query("country")
-// 	platform := c.Query("platform")
+	offset := c.DefaultQuery("offset", "0")
+	limit := c.DefaultQuery("limit", "5")
+	age_lb := c.DefaultQuery("age", "100")
+	age_ub := c.DefaultQuery("age", "1")
+	gender := c.DefaultQuery("gender", "")
+	country := c.DefaultQuery("country", "")
+	platform := c.DefaultQuery("platform", "")
 
-// 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancelfunc()
+	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
 
-// 	query := `SELECT a.* FROM advertisements a
-// 	LEFT JOIN advertisement_gender ag ON a.id = ag.advertisement_id
-// 	LEFT JOIN advertisement_country ac ON a.id = ac.advertisement_id
-// 	LEFT JOIN advertisement_platform ap ON a.id = ap.advertisement_id
-// 	WHERE a.start_at <= NOW() AND a.end_at >= NOW()
-// 	AND a.age_from <= ? AND a.age_to >= ?
-// 	AND ag
-// }
+	rows, err := db.QueryContext(ctx,
+		`SELECT * FROM advertisements
+		WHERE (age_start <= ? AND age_end >= ?)
+		AND (gender LIKE ? OR gender IS NULL)
+		AND (country LIKE ? OR country IS NULL)
+		AND (platform LIKE ? OR platform IS NULL)
+		ORDER BY end_at ASC
+		LIMIT ? OFFSET ?`,
+		age_lb, age_ub, gender, country, platform, limit, offset)
+	if err != nil {
+		log.Printf("Error %s when querying active advertisements", err)
+		return
+	}
+	defer rows.Close()
+
+	ads := make([]Advertisement, 0)
+	for rows.Next() {
+		var ad Advertisement
+		if err := rows.Scan(&ad.Title, &ad.EndAt); err != nil {
+			log.Printf("Error %s when scanning rows", err)
+			return
+		}
+		ads = append(ads, ad)
+	}
+	c.JSON(200, ads)
+}

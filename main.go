@@ -11,6 +11,6 @@ func main() {
 	db.CreateTable()
 	router := gin.Default()
 	router.POST("/api/v1/ad", db.InsertAdvertisement)
-	// router.GET("/api/v1/ad", select_active_advertisements)
+	router.GET("/api/v1/ad", db.SelectActiveAdvertisements)
 	router.Run("localhost:8080")
 }
